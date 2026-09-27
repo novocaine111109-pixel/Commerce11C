@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Empire Builder 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a30; --panel2:#182241; --gold:#ffd166;
+    --green:#2ec4b6; --red:#ef476f; --blue:#4cc9f0; --ink:#eaf0ff; --muted:#9fb0d0;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:var(--bg);color:var(--ink);
+    font-family:'Poppins',sans-serif; overflow:hidden;}
+  #canvas-wrap{position:fixed;inset:0;}
+  #scene-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .hud{position:fixed;inset:0;pointer-events:none;}
+  .hud > *{pointer-events:auto;}
+  .topbar{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;
+    align-items:center;padding:14px 22px;background:linear-gradient(180deg, rgba(8,12,26,0.9), rgba(8,12,26,0));
+    z-index:20;}
+  .brand{font-family:'Press Start 2P',cursive;font-size:13px;color:var(--gold);letter-spacing:1px;
+    text-shadow:0 0 10px rgba(255,209,102,0.5);}
+  .stat-pill{background:rgba(18,26,48,0.85);border:1px solid rgba(255,255,255,0.08);
+    padding:8px 14px;border-radius:999px;font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center;
+    backdrop-filter: blur(6px);}
+  .stat-row{display:flex;gap:10px;}
+  .stat-pill .lab{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}
+  .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    z-index:30; background:rgba(6,9,20,0.55); backdrop-filter: blur(3px);}
+  .hidden{display:none !important;}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid rgba(255,255,255,0.08);
+    border-radius:18px;padding:28px 30px;max-width:640px;width:92%;max-height:88vh;overflow-y:auto;
+    box-shadow:0 30px 80px rgba(0,0,0,0.55);}
+  .card h1{font-family:'Press Start 2P',cursive;font-size:20px;color:var(--gold);margin:0 0 6px;line-height:1.5;}
+  .card h2{font-family:'Press Start 2P',cursive;font-size:15px;color:var(--gold);margin:0 0 14px;line-height:1.5;}
+  .card p{color:var(--muted);line-height:1.6;font-size:14.5px;}
+  .btn{font-family:'Poppins',sans-serif;font-weight:700;border:none;border-radius:12px;padding:13px 22px;
+    font-size:15px;cursor:pointer;transition:transform 0.12s ease, box-shadow 0.12s ease; color:#0b1020;}
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:linear-gradient(180deg,#ffe08a,var(--gold));box-shadow:0 8px 20px rgba(255,209,102,0.3);}
+  .btn-green{background:linear-gradient(180deg,#7ee8db,var(--green));box-shadow:0 8px 20px rgba(46,196,182,0.3);}
+  .btn-red{background:linear-gradient(180deg,#ff8fa8,var(--red));box-shadow:0 8px 20px rgba(239,71,111,0.3); color:#fff;}
+  .btn-ghost{background:rgba(255,255,255,0.06);color:var(--ink);border:1px solid rgba(255,255,255,0.14);}
+  .btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;}
+  .logo-wrap{display:flex;align-items:center;justify-content:center;margin-bottom:18px;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:0.5px;}
+  .badge-green{background:rgba(46,196,182,0.18);color:var(--green);}
+  .badge-red{background:rgba(239,71,111,0.18);color:var(--red);}
+  .badge-gold{background:rgba(255,209,102,0.18);color:var(--gold);}
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:8px;}
+</style>
+</head>
+<body>
+<div id="canvas-wrap">
+  <canvas id="scene-canvas"></canvas>
+</div>
+<div class="hud">
+  <div class="topbar" id="topbar" style="display:none;">
+    <div class="brand">EMPIRE BUILDER</div>
+    <div class="stat-row">
+      <div class="stat-pill"><span class="lab">Day</span><span id="hud-day">1</span></div>
+      <div class="stat-pill"><span class="lab">Cash</span><span id="hud-cash">Rs 0</span></div>
+      <div class="stat-pill"><span class="lab">Rep</span><span id="hud-rep">50</span></div>
+      <div class="stat-pill"><span class="lab">Shops</span><span id="hud-shops">1</span></div>
+    </div>
+  </div>
+</div>
+<div id="screens"></div>
+
+<script>
+/* =========================================================
+   EMPIRE BUILDER 3D - CORE STATE & ECONOMY MODEL
+   ========================================================= */
+const LS_KEY = 'empire3d-save-v1';
+const LB_KEY = 'empire3d-leaderboard-v1';
+
+const CONCEPTS = {
+  priceHigh: {
+    title: "Price Elasticity of Demand",
+    text: "When your price is well above rivals, customers are very sensitive to that gap and switch away fast. Small price increases can cause big drops in sales, that's high elasticity."
+  },
+  priceLow: {
+    title: "Underpricing & Margin Loss",
+    text: "Pricing far below rivals can pull in a crowd, but if it's below a healthy margin you sell a lot while barely profiting, or even losing money per item."
+  },
+  understock: {
+    title: "Stockouts & Lost Sales",
+    text: "When you run out of stock before demand is met, every customer turned away is a sale you'll never get back. Businesses hold buffer stock to avoid this."
+  },
+  overstock: {
+    title: "Overstock & Holding Cost",
+    text: "Stocking far more than you sell ties up cash in unsold goods that may spoil or lose value, known as holding cost. Efficient inventory matches supply to expected demand."
+  },
+  marketingWaste: {
+    title: "Marketing Return on Investment",
+    text: "Marketing spend should be judged by what it returns in extra sales. Spending on ads without enough stock or a fair price to back it up wastes the investment."
+  },
+  goodPricing: {
+    title: "Competitive Pricing",
+    text: "Matching or slightly beating rival pricing keeps you competitive without giving away margin. This balance is the heart of everyday retail strategy."
+  },
+  diversify: {
+    title: "Diversification",
+    text: "Relying on a single shop means one bad day hits your whole income. Multiple shops spread that risk, if one underperforms, others can carry you."
+  },
+  scale: {
+    title: "Economies of Scale",
+    text: "As your empire grows, shared reputation and brand recognition can lower the marketing needed per shop to attract the same number of customers."
+  },
+  diminishing: {
+    title: "Diminishing Returns",
+    text: "Pouring all your cash into upgrading one single shop yields smaller and smaller extra profit each time, compared to spreading investment across the empire."
+  },
+  rent: {
+    title: "Fixed Costs",
+    text: "Bigger premises come with bigger fixed costs, like rent, that you owe regardless of how many customers you serve. A shop must sell enough just to cover these before it earns any real profit."
+  }
+};
+
+// ---- DIFFICULTY RAMP ----
+// Rent per shop, by tier, kicks in once the business is established (day 11+).
+const RENT_BY_TIER = [40, 90, 180, 320];
+const RENT_START_DAY = 11;
+
+// How much visibility the player gets into tomorrow's conditions before planning.
+// Early days: full forecast (learning phase). Mid: weather only. Late: nothing, you're on your own.
+function getForecastPhase(day){
+  if(day <= 5) return 'full';
+  if(day <= 14) return 'partial';
+  return 'none';
+}
+
+// The rival gets sharper (less randomly mispriced) as the game goes on, so
+// undercutting or overpricing them by a wide margin gets harder to exploit late-game.
+function rivalSpreadForDay(day){
+  if(day <= 10) return 0.25;   // rival price can wander +/-  a lot early on
+  if(day <= 17) return 0.15;
+  return 0.07;                 // tightly clustered near true price late-game
+}
+
+const RIVAL_BASE_PRICE = 55; // rival's typical price per unit, drifts daily
+const CATEGORIES = [
+  {id:'grocery', name:'Grocery Mart', baseCost:22, baseDemand:38, color:0x4cc9f0},
+  {id:'bakery', name:'Bakery', baseCost:15, baseDemand:30, color:0xffd166},
+  {id:'electronics', name:'Electronics Kiosk', baseCost:120, baseDemand:14, color:0xef476f},
+  {id:'fashion', name:'Fashion Corner', baseCost:60, baseDemand:20, color:0x2ec4b6},
+];
+
+const WEATHER_TYPES = [
+  {id:'clear', label:'Clear skies', demandMult:1.0, weight:5},
+  {id:'sunny', label:'Sunny & busy', demandMult:1.18, weight:3},
+  {id:'rainy', label:'Rainy day', demandMult:0.72, weight:3},
+  {id:'festival', label:'Local festival', demandMult:1.45, weight:1},
+  {id:'heatwave', label:'Heatwave', demandMult:0.85, weight:1},
+];
+
+function pickWeather(rng){
+  const total = WEATHER_TYPES.reduce((s,w)=>s+w.weight,0);
+  let r = rng()*total;
+  for(const w of WEATHER_TYPES){ if(r < w.weight) return w; r -= w.weight; }
+  return WEATHER_TYPES[0];
+}
+
+// simple seeded RNG so runs can be reproducible if needed
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let RNG = mulberry32(Date.now() % 2147483647);
+
+const G = {
+  day: 1,
+  maxDays: 21,
+  cash: 5000,
+  reputation: 50, // 0-100
+  shops: [], // {id, catId, plot:{x,z}, tier, price, stock, marketing, staff, employeesCount}
+  history: [], // per-day summary log
+  weatherToday: WEATHER_TYPES[0],
+  rivalPriceToday: RIVAL_BASE_PRICE,
+  upcomingWeather: null,
+  upcomingRivalPrice: null,
+  gameOver: false,
+  plots: makePlotGrid(), // grid of {x,z, occupiedBy} - built once so scene markers can attach to it
+  nextShopId: 1,
+  lastDayReport: null,
+};
+
+const TIERS = [
+  {level:1, name:'Stall', cap: 60, height:1.0, upgradeCost:0},
+  {level:2, name:'Shopfront', cap: 120, height:1.6, upgradeCost:1400},
+  {level:3, name:'Storefront Plus', cap: 220, height:2.3, upgradeCost:3200},
+  {level:4, name:'Flagship Store', cap: 380, height:3.2, upgradeCost:6500},
+];
+
+const MARKETING_TIERS = [
+  {level:0, name:'None', cost:0, demandBoost:0},
+  {level:1, name:'Posters', cost:120, demandBoost:0.10},
+  {level:2, name:'Social Ads', cost:350, demandBoost:0.22},
+  {level:3, name:'Influencer', cost:800, demandBoost:0.38},
+];
+
+function makePlotGrid(){
+  const plots = [];
+  const size = 5; // 5x5 grid of plots
+  for(let x=0;x<size;x++){
+    for(let z=0;z<size;z++){
+      plots.push({x, z, occupiedBy:null});
+    }
+  }
+  return plots;
+}
+
+function newShop(catId, plot){
+  const cat = CATEGORIES.find(c=>c.id===catId);
+  const sameCount = G.shops.filter(s=>s.catId===catId).length;
+  const shop = {
+    id: G.nextShopId++,
+    catId,
+    plot: {x:plot.x, z:plot.z},
+    tier: 1,
+    price: Math.round(cat.baseCost * 1.8),
+    stock: 40,
+    marketing: 0,
+    reputationLocal: 50,
+    name_display: cat.name + (sameCount>0 ? ' #' + (sameCount+1) : ''),
+  };
+  plot.occupiedBy = shop.id;
+  return shop;
+}
+
+function initGame(){
+  G.day = 1;
+  G.cash = 5000;
+  G.reputation = 50;
+  // reset existing plots rather than replacing the array, so any attached
+  // 3D marker meshes (built once in initThree) stay linked to the right plot
+  G.plots.forEach(p=>{
+    p.occupiedBy = null;
+    if(p.markerMesh) p.markerMesh.visible = true;
+  });
+  G.shops = [];
+  G.history = [];
+  G.gameOver = false;
+  G.nextShopId = 1;
+  // starting shop at center plot
+  const center = G.plots.find(p=>p.x===2 && p.z===2);
+  const first = newShop('grocery', center);
+  G.shops.push(first);
+}
+</script>
+
+<script>
+/* =========================================================
+   THREE.JS SCENE SETUP - low-poly city
+   ========================================================= */
+let renderer, scene, camera, clock;
+let groundGroup, shopMeshes = {}, customerPool = [];
+let ambientLight, sunLight;
+let cameraAngle = 0.35; // slow idle rotation
+let targetCamDist = 16, camDist = 16;
+let raycaster, mouseNDC = new THREE.Vector2();
+
+const PLOT_SIZE = 3.2;
+
+function initThree(){
+  const canvas = document.getElementById('scene-canvas');
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8ecae6);
+  scene.fog = new THREE.Fog(0x8ecae6, 26, 55);
+
+  camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 200);
+
+  ambientLight = new THREE.HemisphereLight(0xffffff, 0x445566, 0.85);
+  scene.add(ambientLight);
+
+  sunLight = new THREE.DirectionalLight(0xfff4d6, 1.05);
+  sunLight.position.set(14, 22, 10);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(2048, 2048);
+  sunLight.shadow.camera.left = -25;
+  sunLight.shadow.camera.right = 25;
+  sunLight.shadow.camera.top = 25;
+  sunLight.shadow.camera.bottom = -25;
+  sunLight.shadow.camera.near = 1;
+  sunLight.shadow.camera.far = 60;
+  scene.add(sunLight);
+
+  groundGroup = new THREE.Group();
+  scene.add(groundGroup);
+
+  buildGroundPlots();
+
+  clock = new THREE.Clock();
+  raycaster = new THREE.Raycaster();
+
+  window.addEventListener('resize', onResize);
+  canvas.addEventListener('click', onSceneClick);
+
+  animate();
+}
+
+function onResize(){
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function buildGroundPlots(){
+  // base ground plane
+  const groundGeo = new THREE.PlaneGeometry(60, 60);
+  const groundMat = new THREE.MeshStandardMaterial({color:0x2a5c3a, roughness:1});
+  const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  groundMesh.rotation.x = -Math.PI/2;
+  groundMesh.receiveShadow = true;
+  groundMesh.position.y = -0.01;
+  groundGroup.add(groundMesh);
+
+  // road grid lines (simple crossing paths between plots)
+  const size = 5;
+  const roadMat = new THREE.MeshStandardMaterial({color:0x3b3f4a, roughness:0.95});
+  for(let i=0;i<=size;i++){
+    const off = (i - size/2) * PLOT_SIZE;
+    const roadGeoH = new THREE.BoxGeometry(size*PLOT_SIZE + 2, 0.02, 0.5);
+    const roadH = new THREE.Mesh(roadGeoH, roadMat);
+    roadH.position.set(0, 0.005, off - PLOT_SIZE/2);
+    roadH.receiveShadow = true;
+    groundGroup.add(roadH);
+
+    const roadGeoV = new THREE.BoxGeometry(0.5, 0.02, size*PLOT_SIZE + 2);
+    const roadV = new THREE.Mesh(roadGeoV, roadMat);
+    roadV.position.set(off - PLOT_SIZE/2, 0.005, 0);
+    roadV.receiveShadow = true;
+    groundGroup.add(roadV);
+  }
+
+  // empty plot markers (thin outlined squares) for unowned plots
+  G.plots.forEach(p=>{
+    const worldX = (p.x - 2) * PLOT_SIZE;
+    const worldZ = (p.z - 2) * PLOT_SIZE;
+    const markGeo = new THREE.PlaneGeometry(PLOT_SIZE*0.86, PLOT_SIZE*0.86);
+    const markMat = new THREE.MeshStandardMaterial({color:0x3f7a4c, roughness:1, transparent:true, opacity:0.55});
+    const mark = new THREE.Mesh(markGeo, markMat);
+    mark.rotation.x = -Math.PI/2;
+    mark.position.set(worldX, 0.02, worldZ);
+    mark.receiveShadow = true;
+    mark.userData.plotRef = p;
+    groundGroup.add(mark);
+    p.markerMesh = mark;
+  });
+}
+
+function plotWorldPos(p){
+  return { x: (p.x - 2) * PLOT_SIZE, z: (p.z - 2) * PLOT_SIZE };
+}
+</script>
+
+<script>
+/* =========================================================
+   SHOP BUILDING MESHES - low poly, grows with tier
+   ========================================================= */
+function buildShopMesh(shop){
+  const cat = CATEGORIES.find(c=>c.id===shop.catId);
+  const tierDef = TIERS[shop.tier-1];
+  const group = new THREE.Group();
+
+  const baseColor = new THREE.Color(cat.color);
+  const roofColor = new THREE.Color(0x8a5a3a);
+
+  const w = 2.2, d = 2.2, h = tierDef.height;
+
+  // building body
+  const bodyGeo = new THREE.BoxGeometry(w, h, d);
+  const bodyMat = new THREE.MeshStandardMaterial({color: baseColor, roughness:0.75, metalness:0.05});
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = h/2;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  // roof (pyramid-ish via cone with 4 segments)
+  const roofGeo = new THREE.ConeGeometry(w*0.82, 0.7, 4);
+  const roofMat = new THREE.MeshStandardMaterial({color: roofColor, roughness:0.8});
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.rotation.y = Math.PI/4;
+  roof.position.y = h + 0.35;
+  roof.castShadow = true;
+  group.add(roof);
+
+  // door
+  const doorGeo = new THREE.BoxGeometry(0.55, 0.9, 0.05);
+  const doorMat = new THREE.MeshStandardMaterial({color:0x3a2a1a});
+  const door = new THREE.Mesh(doorGeo, doorMat);
+  door.position.set(0, 0.45, d/2 + 0.03);
+  group.add(door);
+
+  // sign board (floating plane with canvas texture)
+  const signCanvas = document.createElement('canvas');
+  signCanvas.width = 256; signCanvas.height = 64;
+  const ctx = signCanvas.getContext('2d');
+  ctx.fillStyle = '#fff8e7';
+  ctx.fillRect(0,0,256,64);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = 'bold 26px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cat.name, 128, 32);
+  const signTex = new THREE.CanvasTexture(signCanvas);
+  const signGeo = new THREE.PlaneGeometry(1.9, 0.48);
+  const signMat = new THREE.MeshBasicMaterial({map: signTex, transparent:true});
+  const sign = new THREE.Mesh(signGeo, signMat);
+  sign.position.set(0, h + 0.05, d/2 + 0.04);
+  group.add(sign);
+  group.userData.signCanvas = signCanvas;
+  group.userData.signCtx = ctx;
+  group.userData.signTex = signTex;
+
+  // stock indicator boxes stacked outside (visual only, count scales with stock ratio)
+  const stockGroup = new THREE.Group();
+  group.add(stockGroup);
+  group.userData.stockGroup = stockGroup;
+
+  // tier upgrade sparkle marker (small floating cube shown if upgrade available - toggled externally)
+  const upGeo = new THREE.OctahedronGeometry(0.18);
+  const upMat = new THREE.MeshStandardMaterial({color:0xffd166, emissive:0x664400, emissiveIntensity:0.6});
+  const upMarker = new THREE.Mesh(upGeo, upMat);
+  upMarker.position.set(0, h + 1.1, 0);
+  upMarker.visible = false;
+  group.add(upMarker);
+  group.userData.upMarker = upMarker;
+
+  group.userData.shopId = shop.id;
+  group.userData.baseY = 0;
+  group.userData.bobPhase = Math.random()*Math.PI*2;
+
+  updateStockVisual(group, shop);
+
+  return group;
+}
+
+function updateStockVisual(group, shop){
+  const stockGroup = group.userData.stockGroup;
+  while(stockGroup.children.length){
+    const c = stockGroup.children.pop();
+    c.geometry.dispose(); c.material.dispose();
+  }
+  const tierDef = TIERS[shop.tier-1];
+  const ratio = Math.max(0, Math.min(1, shop.stock / tierDef.cap));
+  const boxCount = Math.round(ratio * 8);
+  const boxMat = new THREE.MeshStandardMaterial({color:0xd8a15a, roughness:0.9});
+  for(let i=0;i<boxCount;i++){
+    const bGeo = new THREE.BoxGeometry(0.22,0.22,0.22);
+    const b = new THREE.Mesh(bGeo, boxMat);
+    const col = i % 4;
+    const row = Math.floor(i/4);
+    b.position.set(-0.9 + col*0.24, 0.11 + row*0.24, 1.35);
+    b.castShadow = true;
+    stockGroup.add(b);
+  }
+}
+
+function refreshShopSign(group, shop){
+  const cat = CATEGORIES.find(c=>c.id===shop.catId);
+  const ctx = group.userData.signCtx;
+  const canvas = group.userData.signCanvas;
+  ctx.fillStyle = '#fff8e7';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cat.name + ' Lv' + shop.tier, 128, 32);
+  group.userData.signTex.needsUpdate = true;
+}
+
+/* ---------------- Customer figures (simple low-poly capsule people) ---------------- */
+function buildCustomerFigure(shirtColorHex){
+  const g = new THREE.Group();
+  const skin = new THREE.MeshStandardMaterial({color:0xe8b183, roughness:0.9});
+  const shirt = new THREE.MeshStandardMaterial({color:shirtColorHex, roughness:0.8});
+  const pants = new THREE.MeshStandardMaterial({color:0x334155, roughness:0.9});
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), skin);
+  head.position.y = 0.62;
+  head.castShadow = true;
+  g.add(head);
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.34, 8), shirt);
+  body.position.y = 0.36;
+  body.castShadow = true;
+  g.add(body);
+
+  const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.26, 8), pants);
+  legs.position.y = 0.12;
+  legs.castShadow = true;
+  g.add(legs);
+
+  g.userData.legMesh = legs;
+  g.userData.headMesh = head;
+  g.userData.walkPhase = Math.random()*Math.PI*2;
+  return g;
+}
+
+const SHIRT_COLORS = [0xef476f, 0x4cc9f0, 0xffd166, 0x2ec4b6, 0x9b5de5, 0xf4a261];
+</script>
+
+<script>
+/* =========================================================
+   SCENE SYNC - rebuild/update meshes to match G.shops
+   ========================================================= */
+function syncShopMeshes(){
+  // remove meshes for shops that no longer exist (shouldn't happen, but safe)
+  const currentIds = new Set(G.shops.map(s=>s.id));
+  Object.keys(shopMeshes).forEach(idStr=>{
+    const id = Number(idStr);
+    if(!currentIds.has(id)){
+      groundGroup.remove(shopMeshes[id]);
+      delete shopMeshes[id];
+    }
+  });
+
+  G.shops.forEach(shop=>{
+    const plot = G.plots.find(p=>p.x===shop.plot.x && p.z===shop.plot.z);
+    const pos = plotWorldPos(plot);
+    if(!shopMeshes[shop.id]){
+      const mesh = buildShopMesh(shop);
+      mesh.position.set(pos.x, 0, pos.z);
+      groundGroup.add(mesh);
+      shopMeshes[shop.id] = mesh;
+      if(plot.markerMesh) plot.markerMesh.visible = false;
+    } else {
+      // tier may have changed -> rebuild if mismatched child count heuristic
+      const mesh = shopMeshes[shop.id];
+      if(mesh.userData.builtTier !== shop.tier){
+        groundGroup.remove(mesh);
+        const newMesh = buildShopMesh(shop);
+        newMesh.userData.builtTier = shop.tier;
+        newMesh.position.set(pos.x, 0, pos.z);
+        groundGroup.add(newMesh);
+        shopMeshes[shop.id] = newMesh;
+      }
+      updateStockVisual(shopMeshes[shop.id], shop);
+    }
+    shopMeshes[shop.id].userData.builtTier = shop.tier;
+  });
+}
+
+/* ---------------- Customer simulation for "run day" animation ---------------- */
+let activeCustomers = [];
+
+function spawnCustomerBatch(shopResults, onDone){
+  // shopResults: array of {shop, served, lost} used to decide how many walk in happy/sad
+  activeCustomers.forEach(c=>groundGroup.remove(c.mesh));
+  activeCustomers = [];
+
+  const spawnQueue = [];
+  shopResults.forEach(res=>{
+    const plot = G.plots.find(p=>p.x===res.shop.plot.x && p.z===res.shop.plot.z);
+    const pos = plotWorldPos(plot);
+    const happyCount = Math.min(5, Math.max(1, Math.round(res.served / 8)));
+    const sadCount = Math.min(3, Math.round(res.lost / 10));
+    for(let i=0;i<happyCount;i++) spawnQueue.push({pos, happy:true, delay: i*0.35 + Math.random()*0.3});
+    for(let i=0;i<sadCount;i++) spawnQueue.push({pos, happy:false, delay: i*0.5 + 0.4 + Math.random()*0.3});
+  });
+
+  spawnQueue.sort((a,b)=>a.delay-b.delay);
+  let idx = 0;
+  const startTime = performance.now();
+
+  function trySpawn(){
+    const elapsed = (performance.now()-startTime)/1000;
+    while(idx < spawnQueue.length && spawnQueue[idx].delay <= elapsed){
+      const item = spawnQueue[idx];
+      const color = SHIRT_COLORS[Math.floor(Math.random()*SHIRT_COLORS.length)];
+      const mesh = buildCustomerFigure(color);
+      const entryX = item.pos.x + (Math.random()*2-1)*0.6;
+      const entryZ = item.pos.z + 4 + Math.random()*1.5;
+      mesh.position.set(entryX, 0, entryZ);
+      mesh.userData.target = {x: item.pos.x + (Math.random()*1-0.5), z: item.pos.z + 1.3};
+      mesh.userData.state = 'walkin';
+      mesh.userData.happy = item.happy;
+      mesh.userData.pauseTimer = 0.6 + Math.random()*0.5;
+      groundGroup.add(mesh);
+      activeCustomers.push({mesh, happy:item.happy});
+      idx++;
+    }
+    if(idx < spawnQueue.length){
+      requestAnimationFrame(trySpawn);
+    } else {
+      // wait for remaining to finish walking out, then callback
+      setTimeout(()=>{ if(onDone) onDone(); }, 3200);
+    }
+  }
+  trySpawn();
+}
+
+function updateCustomers(dt){
+  const speed = 1.6;
+  activeCustomers.forEach(c=>{
+    const m = c.mesh;
+    const ud = m.userData;
+    ud.walkPhase += dt*8;
+    const bob = Math.abs(Math.sin(ud.walkPhase))*0.05;
+
+    if(ud.state === 'walkin'){
+      const dx = ud.target.x - m.position.x;
+      const dz = ud.target.z - m.position.z;
+      const dist = Math.sqrt(dx*dx+dz*dz);
+      if(dist < 0.1){
+        ud.state = 'pause';
+      } else {
+        m.position.x += (dx/dist)*speed*dt;
+        m.position.z += (dz/dist)*speed*dt;
+        m.rotation.y = Math.atan2(dx, dz);
+        m.position.y = bob;
+      }
+    } else if(ud.state === 'pause'){
+      ud.pauseTimer -= dt;
+      m.position.y = Math.sin(ud.walkPhase*0.5)*0.02;
+      if(ud.pauseTimer <= 0){
+        ud.state = 'walkout';
+        const exitAngle = (Math.random()*0.6-0.3);
+        ud.exitTarget = {
+          x: m.position.x + Math.sin(exitAngle)*3,
+          z: m.position.z + (ud.happy ? 5 : 4.5)
+        };
+      }
+    } else if(ud.state === 'walkout'){
+      const dx = ud.exitTarget.x - m.position.x;
+      const dz = ud.exitTarget.z - m.position.z;
+      const dist = Math.sqrt(dx*dx+dz*dz);
+      if(dist > 0.1){
+        m.position.x += (dx/dist)*speed*dt;
+        m.position.z += (dz/dist)*speed*dt;
+        m.rotation.y = Math.atan2(dx, dz);
+        m.position.y = bob;
+      }
+    }
+  });
+}
+
+function clearCustomers(){
+  activeCustomers.forEach(c=>groundGroup.remove(c.mesh));
+  activeCustomers = [];
+}
+</script>
+
+<script>
+/* =========================================================
+   RENDER LOOP + CAMERA
+   ========================================================= */
+function updateCamera(dt){
+  camDist += (targetCamDist - camDist) * Math.min(1, dt*3);
+  cameraAngle += dt * 0.06; // slow idle orbit
+  const height = camDist * 0.62;
+  camera.position.set(Math.sin(cameraAngle)*camDist, height, Math.cos(cameraAngle)*camDist);
+  camera.lookAt(0, 1.2, 0);
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  updateCamera(dt);
+  updateCustomers(dt);
+
+  // idle bob for shop buildings
+  Object.values(shopMeshes).forEach(mesh=>{
+    mesh.userData.bobPhase += dt*0.8;
+  });
+
+  renderer.render(scene, camera);
+}
+
+function setSkyForWeather(weather){
+  const skyColors = {
+    clear: 0x8ecae6, sunny: 0x70c1ff, rainy: 0x5b7291, festival: 0xffb703, heatwave: 0xf4a261
+  };
+  const col = skyColors[weather.id] || 0x8ecae6;
+  scene.background = new THREE.Color(col);
+  scene.fog.color = new THREE.Color(col);
+}
+
+/* click-to-select plot (for building new shop) handled via raycaster */
+let plotClickHandler = null; // set externally when in "choose plot" mode
+
+function onSceneClick(evt){
+  if(!plotClickHandler) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouseNDC.x = ((evt.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y = -((evt.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const markers = G.plots.filter(p=>p.markerMesh && p.markerMesh.visible).map(p=>p.markerMesh);
+  const hits = raycaster.intersectObjects(markers);
+  if(hits.length){
+    const plot = hits[0].object.userData.plotRef;
+    plotClickHandler(plot);
+  }
+}
+</script>
+
+<script>
+/* =========================================================
+   DAY SIMULATION - the economic engine
+   ========================================================= */
+function rollUpcomingConditions(){
+  G.upcomingWeather = pickWeather(RNG);
+  const spread = rivalSpreadForDay(G.day);
+  // spread is now +/- spread/2 around 1.0 instead of a fixed 0.9-1.15 band
+  G.upcomingRivalPrice = Math.round(RIVAL_BASE_PRICE * (1 - spread/2 + RNG()*spread));
+}
+
+function simulateDay(){
+  // use the pre-rolled conditions if available (normal flow); fall back to a
+  // fresh roll only as a safety net if something calls simulateDay() directly.
+  if(G.upcomingWeather === null) rollUpcomingConditions();
+  const weather = G.upcomingWeather;
+  G.weatherToday = weather;
+  G.rivalPriceToday = G.upcomingRivalPrice;
+  G.upcomingWeather = null;
+  G.upcomingRivalPrice = null;
+
+  const rentActive = G.day >= RENT_START_DAY;
+
+  const results = []; // per shop: {shop, revenue, cost, profit, served, lost, wasted, notes:[]}
+  let totalRevenue = 0, totalCost = 0, totalProfit = 0, totalServed = 0, totalLost = 0, totalWasted = 0, totalRent = 0;
+
+  G.shops.forEach(shop=>{
+    const cat = CATEGORIES.find(c=>c.id===shop.catId);
+    const tierDef = TIERS[shop.tier-1];
+    const mkt = MARKETING_TIERS[shop.marketing];
+
+    // base demand scaled by category, weather, reputation, marketing, tier capacity ceiling
+    let demand = cat.baseDemand * weather.demandMult;
+    demand *= (0.6 + G.reputation/100 * 0.8); // reputation influence 0.6x - 1.4x
+    demand *= (1 + mkt.demandBoost);
+    demand *= (0.85 + tierDef.level*0.06); // bigger shops draw slightly more foot traffic
+
+    // price elasticity: compare to rival reference price for category
+    const rivalRef = G.rivalPriceToday * (cat.baseCost / 40); // scale rival ref per category roughly
+    const priceRatio = shop.price / Math.max(1, rivalRef);
+    let elasticityMult;
+    if(priceRatio > 1){
+      elasticityMult = Math.max(0.15, 1 - (priceRatio-1)*1.35);
+    } else {
+      elasticityMult = Math.min(1.6, 1 + (1-priceRatio)*0.9);
+    }
+    demand *= elasticityMult;
+    demand *= (0.9 + RNG()*0.2); // small daily randomness
+
+    demand = Math.max(0, Math.round(demand));
+
+    const served = Math.min(demand, shop.stock);
+    const lost = Math.max(0, demand - shop.stock);
+    const wasted = Math.max(0, shop.stock - served);
+
+    const revenue = served * shop.price;
+    const cogs = served * cat.baseCost;
+    const marketingCost = mkt.cost;
+    const wasteCost = wasted * cat.baseCost * 0.35; // holding/spoilage cost portion
+    const rent = rentActive ? RENT_BY_TIER[shop.tier-1] : 0;
+    const cost = cogs + marketingCost + wasteCost + rent;
+    const profit = revenue - cost;
+
+    // reputation nudge: too much lost demand hurts rep slightly, good service helps
+    let repDelta = 0;
+    if(lost > served*0.4 && lost > 5) repDelta -= 1.5;
+    if(served > 0 && lost === 0 && priceRatio <= 1.05) repDelta += 1;
+    if(priceRatio > 1.3) repDelta -= 1;
+
+    const notes = [];
+    if(priceRatio > 1.25){
+      notes.push({type:'bad', concept:'priceHigh',
+        text: shop.name_display + ': priced at ' + fmtMoney(shop.price) + ' vs rivals around ' + fmtMoney(Math.round(rivalRef)) + '. That gap pushed customers away.'});
+    } else if(priceRatio < 0.75){
+      notes.push({type:'warn', concept:'priceLow',
+        text: shop.name_display + ': priced well below rivals at ' + fmtMoney(shop.price) + '. Sales were strong but margins were thin.'});
+    } else {
+      notes.push({type:'good', concept:'goodPricing',
+        text: shop.name_display + ': price stayed competitive with the market, a healthy balance.'});
+    }
+
+    if(lost > 5){
+      notes.push({type:'bad', concept:'understock',
+        text: shop.name_display + ': turned away about ' + lost + ' customers due to running out of stock.'});
+    }
+    if(wasted > shop.stock*0.3 && wasted > 8){
+      notes.push({type:'warn', concept:'overstock',
+        text: shop.name_display + ': ' + wasted + ' units went unsold, tying up cash and adding holding cost.'});
+    }
+    if(mkt.cost > 0 && served < demand*0.5 && lost < 5){
+      notes.push({type:'warn', concept:'marketingWaste',
+        text: shop.name_display + ': spent on marketing but stock or price limited the payoff.'});
+    }
+    if(rent > 0 && profit < 0 && rent >= Math.abs(profit)*0.3){
+      notes.push({type:'warn', concept:'rent',
+        text: shop.name_display + ': fixed rent of ' + fmtMoney(rent) + ' ate into that day of trading regardless of sales.'});
+    }
+
+    results.push({shop, cat, revenue, cost, profit, served, lost, wasted, demand, notes, repDelta, priceRatio,
+      cogs, marketingCost, wasteCost, rent});
+    totalRevenue += revenue; totalCost += cost; totalProfit += profit;
+    totalServed += served; totalLost += lost; totalWasted += wasted; totalRent += rent;
+  });
+
+  // apply reputation change (avg of shops' deltas, clamped)
+  const avgRepDelta = results.reduce((s,r)=>s+r.repDelta,0) / Math.max(1,results.length);
+  G.reputation = Math.max(0, Math.min(100, G.reputation + avgRepDelta));
+
+  // empire-level notes
+  const empireNotes = [];
+  if(G.shops.length === 1 && G.day > 4){
+    empireNotes.push({type:'warn', concept:'diversify',
+      text: 'Your whole income still depends on a single shop. Expanding spreads out the risk if one location has a bad day.'});
+  }
+  if(G.shops.length >= 3){
+    empireNotes.push({type:'good', concept:'scale',
+      text: 'With multiple shops running, your brand reputation now supports all of them at once, a real economies-of-scale effect.'});
+  }
+  if(G.day === RENT_START_DAY){
+    empireNotes.push({type:'warn', concept:'rent',
+      text: 'Your business is established now, from today rent applies to every shop based on its tier, whether or not it sold much.'});
+  }
+
+  G.cash += totalProfit;
+
+  const report = {
+    day: G.day,
+    weather,
+    rivalPrice: G.rivalPriceToday,
+    results,
+    empireNotes,
+    totalRevenue, totalCost, totalProfit, totalServed, totalLost, totalWasted, totalRent,
+    cashAfter: G.cash,
+    reputationAfter: G.reputation,
+  };
+  G.history.push(report);
+  G.lastDayReport = report;
+  return report;
+}
+
+function fmtMoney(n){
+  const sign = n < 0 ? '-' : '';
+  n = Math.abs(Math.round(n));
+  return sign + 'Rs ' + n.toLocaleString('en-IN');
+}
+</script>
+
+<script>
+/* =========================================================
+   SCREEN MANAGEMENT
+   ========================================================= */
+const screensEl = document.getElementById('screens');
+const topbar = document.getElementById('topbar');
+
+function showScreen(html){
+  screensEl.innerHTML = '<div class="screen">' + html + '</div>';
+}
+function clearScreen(){
+  screensEl.innerHTML = '';
+}
+function updateHud(){
+  document.getElementById('hud-day').textContent = G.day + ' / ' + G.maxDays;
+  document.getElementById('hud-cash').textContent = fmtMoney(G.cash);
+  document.getElementById('hud-rep').textContent = Math.round(G.reputation);
+  document.getElementById('hud-shops').textContent = G.shops.length;
+}
+
+/* ---------------- HOME SCREEN ---------------- */
+function renderHome(){
+  topbar.style.display = 'none';
+  showScreen(`
+    <div class="card" style="text-align:center;">
+      <div class="logo-wrap">
+        <div style="font-size:44px;">&#127970;</div>
+      </div>
+      <h1>EMPIRE BUILDER 3D</h1>
+      <p>Start with one small shop and grow a retail empire across the city block. Set your prices,
+      manage stock, and expand into new shops and categories, all in a living 3D city that grows with you.</p>
+      <p>After every day you'll get a detailed report explaining exactly what worked, what didn't, and the
+      real commerce concept behind it.</p>
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn btn-primary" id="btn-start">Start Empire</button>
+        <button class="btn btn-ghost" id="btn-leaderboard">Leaderboard</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('btn-start').onclick = () => {
+    initGame();
+    syncShopMeshes();
+    startDayFlow();
+  };
+  document.getElementById('btn-leaderboard').onclick = renderLeaderboard;
+}
+
+function renderLeaderboard(){
+  let lb = [];
+  try{ lb = JSON.parse(localStorage.getItem(LB_KEY)) || []; }catch(e){ lb = []; }
+  lb.sort((a,b)=>b.cash-a.cash);
+  const rows = lb.slice(0,10).map((r,i)=>
+    `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <span>${i+1}. ${r.name || 'Player'}</span>
+      <span style="color:var(--gold);font-weight:700;">${fmtMoney(r.cash)}</span>
+      <span style="color:var(--muted);">${r.shops} shops, day ${r.day}</span>
+    </div>`
+  ).join('') || '<p>No entries yet. Be the first to finish a run!</p>';
+  showScreen(`
+    <div class="card">
+      <h2>LEADERBOARD</h2>
+      ${rows}
+      <div class="btn-row"><button class="btn btn-ghost" id="btn-back-home">Back</button></div>
+    </div>
+  `);
+  document.getElementById('btn-back-home').onclick = renderHome;
+}
+</script>
+
+<script>
+/* =========================================================
+   DAY SETUP SCREEN
+   ========================================================= */
+function startDayFlow(){
+  topbar.style.display = 'flex';
+  updateHud();
+  targetCamDist = 14 + G.shops.length*0.8;
+  rollUpcomingConditions();
+  renderDaySetup();
+}
+
+
+function buildForecastCard(){
+  const phase = getForecastPhase(G.day);
+  const w = G.upcomingWeather;
+  let rentNote = '';
+  if(G.day >= RENT_START_DAY){
+    const rentDue = G.shops.reduce((s,shop)=>s+RENT_BY_TIER[shop.tier-1],0);
+    rentNote = `<div style="margin-top:8px;font-size:12.5px;color:var(--muted);">Rent due today across all shops: <strong style="color:var(--red);">${fmtMoney(rentDue)}</strong></div>`;
+  }
+  if(phase === 'full'){
+    return `
+    <div style="background:rgba(76,201,240,0.08);border:1px solid rgba(76,201,240,0.25);border-radius:14px;padding:14px 16px;margin-bottom:16px;">
+      <strong style="font-size:13.5px;">Tomorrow's Outlook</strong>
+      <div style="margin-top:6px;font-size:13.5px;">Weather: <strong>${w.label}</strong> (demand &times;${w.demandMult.toFixed(2)})</div>
+      <div style="font-size:13.5px;">Rival reference price today: <strong>${fmtMoney(G.upcomingRivalPrice)}</strong></div>
+      <div style="margin-top:4px;font-size:12px;color:var(--muted);">Early days show full visibility so you can learn how conditions affect sales. This gets foggier as your business grows.</div>
+      ${rentNote}
+    </div>`;
+  }
+  if(phase === 'partial'){
+    return `
+    <div style="background:rgba(255,209,102,0.08);border:1px solid rgba(255,209,102,0.25);border-radius:14px;padding:14px 16px;margin-bottom:16px;">
+      <strong style="font-size:13.5px;">Tomorrow's Outlook</strong>
+      <div style="margin-top:6px;font-size:13.5px;">Weather: <strong>${w.label}</strong></div>
+      <div style="margin-top:4px;font-size:12px;color:var(--muted);">Rival pricing isn't shared in advance anymore, go by what you've learned from recent days.</div>
+      ${rentNote}
+    </div>`;
+  }
+  return `
+    <div style="background:rgba(239,71,111,0.06);border:1px solid rgba(239,71,111,0.2);border-radius:14px;padding:14px 16px;margin-bottom:16px;">
+      <strong style="font-size:13.5px;">Tomorrow's Outlook</strong>
+      <div style="margin-top:6px;font-size:12.5px;color:var(--muted);">Your business is established now, no forecast today. Trust your instincts and recent results.</div>
+      ${rentNote}
+    </div>`;
+}
+
+function renderDaySetup(){
+  clearScreen();
+  const shopCards = G.shops.map(shop=>{
+    const cat = CATEGORIES.find(c=>c.id===shop.catId);
+    const tierDef = TIERS[shop.tier-1];
+    return `
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+        border-radius:14px;padding:16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <strong>${shop.name_display}</strong>
+        <span class="badge badge-gold">Lv${shop.tier} ${tierDef.name}</span>
+      </div>
+      <label style="font-size:13px;color:var(--muted);">Price per unit (base cost ${fmtMoney(cat.baseCost)})</label>
+      <div style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;">
+        <input type="range" min="${Math.round(cat.baseCost*0.6)}" max="${Math.round(cat.baseCost*3)}"
+          value="${shop.price}" id="price-${shop.id}" style="flex:1;">
+        <span id="price-val-${shop.id}" style="min-width:70px;text-align:right;font-weight:700;">${fmtMoney(shop.price)}</span>
+      </div>
+      <label style="font-size:13px;color:var(--muted);">Stock to prepare (capacity ${tierDef.cap})</label>
+      <div style="display:flex;align-items:center;gap:10px;margin:6px 0 12px;">
+        <input type="range" min="0" max="${tierDef.cap}" step="5" value="${shop.stock}" id="stock-${shop.id}" style="flex:1;">
+        <span id="stock-val-${shop.id}" style="min-width:70px;text-align:right;font-weight:700;">${shop.stock}</span>
+      </div>
+      <label style="font-size:13px;color:var(--muted);">Marketing</label>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+        ${MARKETING_TIERS.map(m=>`
+          <button class="btn btn-ghost mkt-btn" data-shop="${shop.id}" data-level="${m.level}"
+            style="padding:8px 12px;font-size:12.5px;${shop.marketing===m.level?'background:rgba(255,209,102,0.22);border-color:var(--gold);':''}">
+            ${m.name}${m.cost>0 ? ' (' + fmtMoney(m.cost) + ')' : ''}
+          </button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  showScreen(`
+    <div class="card">
+      <h2>DAY ${G.day} PLANNING</h2>
+      <p style="margin-top:-6px;">Set today's price, stock, and marketing for each shop. Cash on hand: <strong style="color:var(--gold);">${fmtMoney(G.cash)}</strong></p>
+      ${buildForecastCard()}
+      ${shopCards}
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-run-day">Open For Business</button>
+      </div>
+    </div>
+  `);
+
+  G.shops.forEach(shop=>{
+    const priceInput = document.getElementById('price-'+shop.id);
+    const priceVal = document.getElementById('price-val-'+shop.id);
+    priceInput.addEventListener('input', ()=>{
+      shop.price = Number(priceInput.value);
+      priceVal.textContent = fmtMoney(shop.price);
+    });
+    const stockInput = document.getElementById('stock-'+shop.id);
+    const stockVal = document.getElementById('stock-val-'+shop.id);
+    stockInput.addEventListener('input', ()=>{
+      shop.stock = Number(stockInput.value);
+      stockVal.textContent = stockInput.value;
+    });
+  });
+  document.querySelectorAll('.mkt-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const shopId = Number(btn.dataset.shop);
+      const shop = G.shops.find(s=>s.id===shopId);
+      const cost = MARKETING_TIERS[Number(btn.dataset.level)].cost;
+      if(cost > G.cash){ flashInsufficientFunds(); return; }
+      shop.marketing = Number(btn.dataset.level);
+      renderDaySetup();
+    });
+  });
+  document.getElementById('btn-run-day').onclick = runDayNow;
+}
+
+function flashInsufficientFunds(){
+  const hud = document.getElementById('hud-cash');
+  hud.style.color = 'var(--red)';
+  setTimeout(()=>{ hud.style.color = ''; }, 700);
+}
+
+function runDayNow(){
+  // marketing cost is already factored into each shop's profit inside
+  // simulateDay(), so it's deducted from cash there, not here.
+  const report = simulateDay();
+  setSkyForWeather(report.weather);
+  syncShopMeshes();
+  targetCamDist = 10 + G.shops.length*0.6;
+
+  clearScreen(); // hide UI during animation
+  spawnCustomerBatch(report.results, ()=>{
+    clearCustomers();
+    renderDayReport(report);
+  });
+}
+</script>
+
+<script>
+/* =========================================================
+   DAILY REPORT SCREEN
+   ========================================================= */
+function renderDayReport(report){
+  updateHud();
+  const shopRows = report.results.map(r=>`
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+        border-radius:12px;padding:14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong>${r.shop.name_display}</strong>
+        <span class="badge ${r.profit>=0?'badge-green':'badge-red'}">${r.profit>=0?'Profit':'Loss'} ${fmtMoney(Math.abs(r.profit))}</span>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:13.5px;color:var(--muted);">
+        <span>Revenue ${fmtMoney(r.revenue)}</span>
+        <span>Cost ${fmtMoney(r.cost)}</span>
+        <span>Served ${r.served}</span>
+        <span>Lost ${r.lost}</span>
+        <span>Wasted ${r.wasted}</span>
+      </div>
+      ${r.profit < 0 ? `
+      <div style="margin-top:10px;padding:12px 14px;border-radius:10px;background:rgba(239,71,111,0.08);border:1px solid rgba(239,71,111,0.25);">
+        <strong style="font-size:13px;color:var(--red);">Why this shop lost money</strong>
+        <div style="font-size:12.5px;margin-top:6px;color:var(--muted);">
+          Conditions today: ${report.weather.label}, rival reference price was about ${fmtMoney(Math.round(r.shop.price / r.priceRatio))} while you priced at ${fmtMoney(r.shop.price)}.
+        </div>
+        <div style="font-size:12.5px;margin-top:6px;">
+          Revenue ${fmtMoney(r.revenue)} (${r.served} sold &times; ${fmtMoney(r.shop.price)}) minus goods ${fmtMoney(r.cogs)}, marketing ${fmtMoney(r.marketingCost)}, waste ${fmtMoney(r.wasteCost)}${r.rent>0 ? ', rent ' + fmtMoney(r.rent) : ''} &nbsp;=&nbsp; a loss of ${fmtMoney(Math.abs(r.profit))}.
+        </div>
+      </div>` : ''}
+      ${r.notes.map(n=>`
+        <div style="margin-top:10px;padding:10px 12px;border-radius:10px;
+          background:${n.type==='bad'?'rgba(239,71,111,0.1)':n.type==='warn'?'rgba(255,209,102,0.1)':'rgba(46,196,182,0.1)'};
+          border-left:3px solid ${n.type==='bad'?'var(--red)':n.type==='warn'?'var(--gold)':'var(--green)'};">
+          <div style="font-size:13.5px;">${n.text}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:5px;">
+            <strong style="color:${n.type==='bad'?'var(--red)':n.type==='warn'?'var(--gold)':'var(--green)'};">${CONCEPTS[n.concept].title}:</strong>
+            ${CONCEPTS[n.concept].text}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  const empireNotesHtml = report.empireNotes.map(n=>`
+    <div style="margin-top:10px;padding:10px 12px;border-radius:10px;
+      background:${n.type==='warn'?'rgba(255,209,102,0.1)':'rgba(46,196,182,0.1)'};
+      border-left:3px solid ${n.type==='warn'?'var(--gold)':'var(--green)'};">
+      <div style="font-size:13.5px;">${n.text}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:5px;">
+        <strong>${CONCEPTS[n.concept].title}:</strong> ${CONCEPTS[n.concept].text}
+      </div>
+    </div>
+  `).join('');
+
+  const netColor = report.totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
+
+  showScreen(`
+    <div class="card">
+      <h2>DAY ${report.day} REPORT</h2>
+      <p style="margin-top:-6px;">Weather: ${report.weather.label} &nbsp;|&nbsp; Rival price around ${fmtMoney(report.rivalPrice)}</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin:14px 0;">
+        <div class="stat-pill"><span class="lab">Net</span><strong style="color:${netColor};">${fmtMoney(report.totalProfit)}</strong></div>
+        <div class="stat-pill"><span class="lab">Revenue</span>${fmtMoney(report.totalRevenue)}</div>
+        <div class="stat-pill"><span class="lab">Cost</span>${fmtMoney(report.totalCost)}</div>
+        <div class="stat-pill"><span class="lab">Cash Now</span>${fmtMoney(G.cash)}</div>
+      </div>
+      ${shopRows}
+      ${empireNotesHtml}
+      <div class="btn-row">
+        ${G.day >= G.maxDays || G.cash < -500 ?
+          `<button class="btn btn-primary" id="btn-finish">See Final Empire Report</button>` :
+          `<button class="btn btn-green" id="btn-continue">Continue to Build & Upgrade</button>
+           <button class="btn btn-ghost" id="btn-stop">Stop Here</button>`
+        }
+      </div>
+    </div>
+  `);
+
+  if(document.getElementById('btn-continue')){
+    document.getElementById('btn-continue').onclick = () => {
+      G.day += 1;
+      renderBuildScreen();
+    };
+  }
+  if(document.getElementById('btn-stop')){
+    document.getElementById('btn-stop').onclick = renderFinalReport;
+  }
+  if(document.getElementById('btn-finish')){
+    document.getElementById('btn-finish').onclick = renderFinalReport;
+  }
+}
+</script>
+
+<script>
+/* =========================================================
+   BUILD & UPGRADE SCREEN
+   ========================================================= */
+function renderBuildScreen(){
+  updateHud();
+  const freePlots = G.plots.filter(p=>!p.occupiedBy);
+
+  const upgradeCards = G.shops.map(shop=>{
+    const tierDef = TIERS[shop.tier-1];
+    const nextTier = TIERS[shop.tier]; // may be undefined if maxed
+    return `
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+        border-radius:12px;padding:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <div>
+        <strong>${shop.name_display}</strong>
+        <div style="font-size:12.5px;color:var(--muted);">Currently Lv${shop.tier} ${tierDef.name}, capacity ${tierDef.cap}</div>
+      </div>
+      ${nextTier ?
+        `<button class="btn btn-green upgrade-btn" data-shop="${shop.id}" style="font-size:13px;padding:10px 16px;">
+          Upgrade to ${nextTier.name} (${fmtMoney(nextTier.upgradeCost)})
+        </button>` :
+        `<span class="badge badge-gold">Max Level</span>`
+      }
+    </div>`;
+  }).join('');
+
+  const catButtons = CATEGORIES.map(cat=>`
+    <button class="btn btn-ghost cat-pick-btn" data-cat="${cat.id}" style="font-size:13px;">
+      ${cat.name}
+    </button>
+  `).join('');
+
+  showScreen(`
+    <div class="card">
+      <h2>BUILD & UPGRADE</h2>
+      <p style="margin-top:-6px;">Cash available: <strong style="color:var(--gold);">${fmtMoney(G.cash)}</strong>
+        &nbsp;|&nbsp; Reputation: <strong>${Math.round(G.reputation)}</strong></p>
+
+      <div style="margin-top:14px;">
+        <strong style="font-size:14px;">Upgrade existing shops</strong>
+        <div style="margin-top:10px;">${upgradeCards}</div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <strong style="font-size:14px;">Build a new shop</strong>
+        <p style="font-size:13px;margin:6px 0 10px;">
+          ${freePlots.length>0 ? 'Pick a category, then click an empty green plot in the city to place it.' : 'No empty plots left in this city block.'}
+        </p>
+        ${freePlots.length>0 ? `<div style="display:flex;gap:8px;flex-wrap:wrap;">${catButtons}</div>` : ''}
+        <div id="build-hint" style="margin-top:10px;font-size:13px;color:var(--gold);display:none;">
+          Now click a highlighted plot in the 3D city to place your shop.
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-next-day">Go To Next Day</button>
+      </div>
+    </div>
+  `);
+
+  document.querySelectorAll('.upgrade-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const shop = G.shops.find(s=>s.id===Number(btn.dataset.shop));
+      const nextTier = TIERS[shop.tier];
+      if(!nextTier) return;
+      if(G.cash < nextTier.upgradeCost){ flashInsufficientFunds(); return; }
+      G.cash -= nextTier.upgradeCost;
+      shop.tier = nextTier.level;
+      syncShopMeshes();
+      updateHud();
+      renderBuildScreen();
+    });
+  });
+
+  document.querySelectorAll('.cat-pick-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.getElementById('build-hint').style.display = 'block';
+      screensEl.innerHTML = ''; // hide overlay so player can click the 3D scene
+      const catId = btn.dataset.cat;
+      plotClickHandler = (plot) => {
+        const buildCost = 1000; // flat cost to establish a new shop
+        if(G.cash < buildCost){ plotClickHandler = null; renderBuildScreen(); flashInsufficientFunds(); return; }
+        G.cash -= buildCost;
+        const shop = newShop(catId, plot);
+        G.shops.push(shop);
+        plot.markerMesh.visible = false;
+        syncShopMeshes();
+        plotClickHandler = null;
+        updateHud();
+        renderBuildScreen();
+      };
+      showFloatingHint('Click a glowing green plot to build here (cost Rs 1000)');
+    });
+  });
+
+  document.getElementById('btn-next-day').onclick = () => {
+    plotClickHandler = null;
+    rollUpcomingConditions();
+    renderDaySetup();
+  };
+}
+
+function showFloatingHint(text){
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);'+
+    'background:rgba(18,26,48,0.92);color:#ffd166;padding:10px 20px;border-radius:999px;'+
+    'font-size:13.5px;font-weight:600;z-index:25;border:1px solid rgba(255,209,102,0.4);';
+  div.textContent = text;
+  div.id = 'floating-hint';
+  document.body.appendChild(div);
+}
+function removeFloatingHint(){
+  const el = document.getElementById('floating-hint');
+  if(el) el.remove();
+}
+</script>
+
+<script>
+/* =========================================================
+   FINAL EMPIRE REPORT + LEADERBOARD SAVE
+   ========================================================= */
+function renderFinalReport(){
+  const totalProfitAllTime = G.history.reduce((s,h)=>s+h.totalProfit,0);
+  const totalRevenueAllTime = G.history.reduce((s,h)=>s+h.totalRevenue,0);
+  const avgRep = G.reputation;
+
+  let rating = 'Rookie Trader';
+  let ratingColor = 'var(--muted)';
+  if(G.cash >= 40000){ rating = 'Business Tycoon'; ratingColor = 'var(--gold)'; }
+  else if(G.cash >= 20000){ rating = 'Empire Builder'; ratingColor = 'var(--green)'; }
+  else if(G.cash >= 10000){ rating = 'Smart Shopkeeper'; ratingColor = 'var(--blue)'; }
+  else if(G.cash < 2000){ rating = 'Struggling Startup'; ratingColor = 'var(--red)'; }
+
+  showScreen(`
+    <div class="card" style="text-align:center;">
+      <h1>EMPIRE REPORT</h1>
+      <p>You ran your empire for ${G.day} day${G.day>1?'s':''} with ${G.shops.length} shop${G.shops.length>1?'s':''}.</p>
+      <div style="font-size:20px;font-weight:800;color:${ratingColor};margin:14px 0;">${rating}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:16px 0;">
+        <div class="stat-pill"><span class="lab">Final Cash</span>${fmtMoney(G.cash)}</div>
+        <div class="stat-pill"><span class="lab">Total Revenue</span>${fmtMoney(totalRevenueAllTime)}</div>
+        <div class="stat-pill"><span class="lab">Reputation</span>${Math.round(avgRep)}</div>
+      </div>
+      <div style="margin:18px 0;text-align:left;">
+        <label style="font-size:13px;color:var(--muted);">Enter your name for the leaderboard</label>
+        <input id="player-name" type="text" maxlength="18" placeholder="Your name"
+          style="width:100%;margin-top:6px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);
+          background:rgba(255,255,255,0.05);color:var(--ink);font-size:14px;">
+      </div>
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn btn-primary" id="btn-save-score">Save Score</button>
+        <button class="btn btn-ghost" id="btn-play-again">Play Again</button>
+      </div>
+    </div>
+  `);
+
+  document.getElementById('btn-save-score').onclick = () => {
+    const name = document.getElementById('player-name').value.trim() || 'Player';
+    let lb = [];
+    try{ lb = JSON.parse(localStorage.getItem(LB_KEY)) || []; }catch(e){ lb = []; }
+    lb.push({name, cash:G.cash, shops:G.shops.length, day:G.day});
+    localStorage.setItem(LB_KEY, JSON.stringify(lb));
+    renderLeaderboard();
+  };
+  document.getElementById('btn-play-again').onclick = renderHome;
+}
+
+/* =========================================================
+   BOOTSTRAP
+   ========================================================= */
+window.addEventListener('DOMContentLoaded', () => {
+  initThree();
+  renderHome();
+});
+</script>
+</body>
+</html>
